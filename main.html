@@ -452,6 +452,73 @@
     background:#fff3cd;
     color:#856404;
   }
+  
+  /* Shadow Text (Ruby/Furigana Style) */
+  .shadow-text{
+    display: inline-block;
+    position: relative;
+    line-height: 2.2;
+  }
+  .shadow-text ruby{
+    font-size: 1em;
+  }
+  .shadow-text rt{
+    font-family: var(--mono);
+    font-size: 0.55em;
+    color: #8a91a0;
+    padding-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .shadow-fallback{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+  }
+  .shadow-fallback .main-text{
+    font-size: 1em;
+  }
+  .shadow-fallback .shadow-below{
+    font-family: var(--mono);
+    font-size: 0.5em;
+    color: #8a91a0;
+    margin-top: 2px;
+  }
+  
+  /* Did You Mean Suggestion */
+  .suggestion-box{
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: #fff8e6;
+    border: 1px solid #ffe082;
+    border-radius: 6px;
+    display: none;
+  }
+  .suggestion-box.visible{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .suggestion-label{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #856404;
+    font-weight: 600;
+  }
+  .suggestion-chip{
+    background: var(--accent);
+    color: var(--paper);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--serif);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .suggestion-chip:hover{
+    background: var(--accent-soft);
+  }
   .breakdown-note{
     font-family:var(--mono);
     font-size:10px;
@@ -506,6 +573,11 @@
         </div>
         <div class="output-text placeholder" id="outputText">Your translation will appear here.</div>
       </div>
+    </div>
+
+    <div class="suggestion-box" id="suggestionBox">
+      <span class="suggestion-label">Did you mean:</span>
+      <span class="suggestion-chip" id="suggestionChip"></span>
     </div>
 
     <div class="actions">
@@ -563,6 +635,8 @@
   const breakdownPanel = document.getElementById('breakdownPanel');
   const breakdownGrid = document.getElementById('breakdownGrid');
   const validationBadge = document.getElementById('validationBadge');
+  const suggestionBox = document.getElementById('suggestionBox');
+  const suggestionChip = document.getElementById('suggestionChip');
 
   function fillSelect(sel, list, defaultCode){
     sel.innerHTML = '';
@@ -818,8 +892,86 @@
       'wasser': { meaning: 'klare Flüssigkeit', synonyms: [] },
       'essen': { meaning: 'Substanz zum Essen', synonyms: ['Nahrung'] },
       'haus': { meaning: 'Wohnort', synonyms: ['Heim', 'Wohnung'] }
+    },
+    'ja': {
+      'konnichiwa': { meaning: 'こんにちは - greeting', synonyms: ['hello'] },
+      'arigatou': { meaning: 'ありがとう - thanks', synonyms: ['thanks'] },
+      'sayonara': { meaning: 'さようなら - goodbye', synonyms: ['bye'] },
+      'ohayou': { meaning: 'おはよう - good morning', synonyms: ['morning'] },
+      'konbanwa': { meaning: 'こんばんは - good evening', synonyms: ['evening'] }
     }
   };
+
+  // Languages that use non-Latin scripts
+  const NON_LATIN_LANGS = ['ja', 'ko', 'zh', 'ar', 'hi', 'ta', 'te', 'bn', 'th', 'he', 'ru', 'el'];
+
+  // Check if text is ASCII/Latin script
+  function isLatinScript(text){
+    return /^[\x00-\x7F\u00C0-\u017F\s\p{P}]+$/u.test(text);
+  }
+
+  // Lazy API validation for transliteration detection
+  async function detectTransliteration(text, targetLang){
+    // Only check if input is Latin but target is non-Latin
+    if(!isLatinScript(text) || !NON_LATIN_LANGS.includes(targetLang)){
+      return { isTransliteration: false, originalText: text };
+    }
+
+    try{
+      // Test translation via API
+      const result = await fetchGoogleFallback(text, 'en', targetLang);
+      
+      // Back-translate to verify
+      const backTranslated = await fetchGoogleFallback(result, targetLang, 'en');
+      
+      // If back-translation is somewhat similar or the result is in target script, it's valid transliteration
+      const isTargetScript = !isLatinScript(result);
+      
+      if(isTargetScript){
+        return { 
+          isTransliteration: true, 
+          originalText: text,
+          translatedText: result,
+          confidence: 'high'
+        };
+      }
+      
+      return { isTransliteration: false, originalText: text };
+    } catch(e){
+      console.warn('Transliteration detection failed:', e);
+      return { isTransliteration: false, originalText: text };
+    }
+  }
+
+  // Render text with shadow (ruby/furigana style)
+  function renderShadowText(original, translated, targetLang){
+    // For non-Latin targets with Latin input, show shadow
+    if(NON_LATIN_LANGS.includes(targetLang) && isLatinScript(original) && !isLatinScript(translated)){
+      // Use ruby tags for proper display
+      return `<span class="shadow-text"><ruby>${escapeHtml(translated)}<rt>${escapeHtml(original)}</rt></ruby></span>`;
+    }
+    return escapeHtml(translated);
+  }
+
+  // Show "Did you mean" suggestion
+  function showSuggestion(suggestion, onClick){
+    if(!suggestion || suggestion.trim() === ''){
+      suggestionBox.classList.remove('visible');
+      return;
+    }
+    
+    suggestionChip.textContent = suggestion;
+    suggestionBox.classList.add('visible');
+    
+    suggestionChip.onclick = () => {
+      onClick(suggestion);
+      suggestionBox.classList.remove('visible');
+    };
+  }
+
+  function hideSuggestion(){
+    suggestionBox.classList.remove('visible');
+  }
 
   // Fallback dictionary API using Free Dictionary API
   async function fetchWordMeaning(word, langCode){
@@ -979,19 +1131,36 @@
     translateBtn.disabled = true;
     translateBtn.textContent = 'Translating…';
     setStatus('');
+    hideSuggestion();
     outputText.classList.remove('placeholder');
     outputText.textContent = '…';
 
     try{
       let result;
+      let transliterationData = null;
+      
+      // Check for transliteration (romaji, pinyin, etc.)
+      if(from === 'auto' || from === 'en'){
+        transliterationData = await detectTransliteration(text, to);
+      }
+      
       try{
         result = await fetchMyMemory(text, from, to);
       } catch(primaryErr){
         console.warn('Primary translation service failed, trying fallback:', primaryErr);
         result = await fetchGoogleFallback(text, from, to);
       }
+      
+      // If transliteration detected and API returned target script, use shadow display
+      let displayResult = result;
+      if(transliterationData && transliterationData.isTransliteration && !isLatinScript(result)){
+        displayResult = renderShadowText(text, result, to);
+        outputText.innerHTML = displayResult;
+      } else {
+        outputText.textContent = result;
+      }
+      
       lastTranslation = result;
-      outputText.textContent = lastTranslation;
       copyBtn.disabled = false;
       speakTarget.disabled = false;
       
@@ -1005,6 +1174,24 @@
     } catch(err){
       outputText.classList.add('placeholder');
       outputText.textContent = 'Your translation will appear here.';
+      
+      // Try to get suggestion from error context or API
+      if(err.message.includes('no translation') || err.message.includes('returned no')){
+        // Attempt to get alternative suggestions
+        try{
+          const altResult = await fetchGoogleFallback(text, 'en', to);
+          if(altResult && altResult !== text){
+            showSuggestion(altResult, (suggestion) => {
+              sourceText.value = suggestion;
+              charCount.textContent = `${sourceText.value.length} / 1000`;
+              translate();
+            });
+          }
+        } catch(suggErr){
+          console.warn('Could not get suggestion:', suggErr);
+        }
+      }
+      
       if(err instanceof TypeError){
         setStatus('Could not reach the translation service. Check your internet connection or try disabling any ad-blocker/VPN for this page.', true);
       } else {

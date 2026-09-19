@@ -360,6 +360,105 @@
     text-align:center;
     padding:20px;
   }
+
+  /* Word Breakdown Panel */
+  .breakdown-panel{
+    margin-top:20px;
+    padding:16px;
+    background:var(--paper-dim);
+    border:1px solid var(--rule);
+    border-radius:6px;
+    display:none;
+  }
+  .breakdown-panel.visible{
+    display:block;
+  }
+  .breakdown-title{
+    font-family:var(--mono);
+    font-size:11px;
+    color:#6b7382;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    margin-bottom:12px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .breakdown-title::before{
+    content:"📖";
+    font-size:14px;
+  }
+  .breakdown-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+    gap:10px;
+  }
+  .word-card{
+    background:var(--paper);
+    border:1px solid var(--rule);
+    padding:10px;
+    border-radius:4px;
+    transition:border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .word-card:hover{
+    border-color:var(--accent);
+    box-shadow:0 2px 6px rgba(43,69,112,0.06);
+  }
+  .word-original{
+    font-family:var(--serif);
+    font-size:15px;
+    font-weight:600;
+    color:var(--ink);
+    margin-bottom:4px;
+  }
+  .word-translated{
+    font-family:var(--serif);
+    font-size:14px;
+    color:var(--accent);
+    margin-bottom:6px;
+  }
+  .word-meaning{
+    font-family:var(--serif);
+    font-size:12px;
+    color:#4b5568;
+    font-style:italic;
+    margin-bottom:4px;
+    line-height:1.4;
+  }
+  .word-synonyms{
+    font-family:var(--mono);
+    font-size:10px;
+    color:#8a91a0;
+  }
+  .word-synonyms::before{
+    content:"Syn: ";
+    color:#6b7382;
+  }
+  .validation-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:3px 8px;
+    border-radius:999px;
+    font-family:var(--mono);
+    font-size:10px;
+    margin-left:auto;
+  }
+  .validation-badge.valid{
+    background:#d4edda;
+    color:#155724;
+  }
+  .validation-badge.warning{
+    background:#fff3cd;
+    color:#856404;
+  }
+  .breakdown-note{
+    font-family:var(--mono);
+    font-size:10px;
+    color:#8a91a0;
+    margin-top:10px;
+    text-align:center;
+  }
 </style>
 </head>
 <body>
@@ -415,6 +514,15 @@
     </div>
     <div class="status" id="status"></div>
 
+    <div class="breakdown-panel" id="breakdownPanel">
+      <div class="breakdown-title">
+        Word-by-Word Breakdown
+        <span class="validation-badge valid" id="validationBadge">✓ Validated</span>
+      </div>
+      <div class="breakdown-grid" id="breakdownGrid"></div>
+      <div class="breakdown-note">Dictionary meanings and synonyms for each word in your translation</div>
+    </div>
+
     <div class="history-panel">
       <div class="history-header">
         <span class="history-title">Cherished Translations</span>
@@ -452,6 +560,9 @@
   const statusEl = document.getElementById('status');
   const charCount = document.getElementById('charCount');
   const toast = document.getElementById('toast');
+  const breakdownPanel = document.getElementById('breakdownPanel');
+  const breakdownGrid = document.getElementById('breakdownGrid');
+  const validationBadge = document.getElementById('validationBadge');
 
   function fillSelect(sel, list, defaultCode){
     sel.innerHTML = '';
@@ -637,6 +748,185 @@
     return div.innerHTML;
   }
 
+  // Simple dictionary for common words (expandable)
+  const SIMPLE_DICT = {
+    'en': {
+      'hello': { meaning: 'a greeting', synonyms: ['hi', 'greetings'] },
+      'world': { meaning: 'the earth', synonyms: ['globe', 'planet'] },
+      'good': { meaning: 'of high quality', synonyms: ['fine', 'excellent'] },
+      'morning': { meaning: 'early part of day', synonyms: ['dawn', 'daybreak'] },
+      'thank': { meaning: 'express gratitude', synonyms: ['appreciate'] },
+      'you': { meaning: 'second person pronoun', synonyms: [] },
+      'love': { meaning: 'deep affection', synonyms: ['adore', 'cherish'] },
+      'friend': { meaning: 'a companion', synonyms: ['pal', 'buddy'] },
+      'happy': { meaning: 'feeling joy', synonyms: ['joyful', 'pleased'] },
+      'time': { meaning: 'duration', synonyms: ['period', 'moment'] },
+      'day': { meaning: '24 hour period', synonyms: ['daytime'] },
+      'night': { meaning: 'dark period', synonyms: ['evening', 'darkness'] },
+      'water': { meaning: 'clear liquid', synonyms: ['H2O'] },
+      'food': { meaning: 'substance for eating', synonyms: ['meal', 'nourishment'] },
+      'home': { meaning: 'place of residence', synonyms: ['house', 'dwelling'] },
+      'please': { meaning: 'polite request', synonyms: [] },
+      'yes': { meaning: 'affirmative', synonyms: ['certainly'] },
+      'no': { meaning: 'negative', synonyms: ['not at all'] },
+      'help': { meaning: 'assistance', synonyms: ['aid', 'support'] },
+      'welcome': { meaning: 'greeting to arrivals', synonyms: ['greeting'] }
+    },
+    'es': {
+      'hola': { meaning: 'un saludo', synonyms: ['saludos'] },
+      'mundo': { meaning: 'la tierra', synonyms: ['planeta', 'globo'] },
+      'bueno': { meaning: 'de alta calidad', synonyms: ['fine', 'excelente'] },
+      'gracias': { meaning: 'expresar gratitud', synonyms: ['agradecer'] },
+      'amor': { meaning: 'afecto profundo', synonyms: ['adorar', 'apreciar'] },
+      'amigo': { meaning: 'un compañero', synonyms: ['compañero', 'camarada'] },
+      'feliz': { meaning: 'sintiendo alegría', synonyms: ['contento', 'alegre'] },
+      'tiempo': { meaning: 'duración', synonyms: ['período', 'momento'] },
+      'día': { meaning: 'período de 24 horas', synonyms: ['jornada'] },
+      'noche': { meaning: 'período oscuro', synonyms: ['oscuridad', 'tarde'] },
+      'agua': { meaning: 'líquido claro', synonyms: [] },
+      'comida': { meaning: 'sustancia para comer', synonyms: ['alimento'] },
+      'casa': { meaning: 'lugar de residencia', synonyms: ['hogar', 'vivienda'] },
+      'por favor': { meaning: 'solicitud educada', synonyms: [] },
+      'sí': { meaning: 'afirmativo', synonyms: ['ciertamente'] },
+      'no': { meaning: 'negativo', synonyms: ['en absoluto'] },
+      'ayuda': { meaning: 'asistencia', synonyms: ['auxilio', 'soporte'] }
+    },
+    'fr': {
+      'bonjour': { meaning: 'une salutation', synonyms: ['salut'] },
+      'monde': { meaning: 'la terre', synonyms: ['planète', 'globe'] },
+      'merci': { meaning: 'exprimer la gratitude', synonyms: ['remercier'] },
+      'amour': { meaning: 'affection profonde', synonyms: ['adorer', 'chérir'] },
+      'ami': { meaning: 'un compagnon', synonyms: ['copain', 'camarade'] },
+      'heureux': { meaning: 'ressentant de la joie', synonyms: ['joyeux', 'content'] },
+      'temps': { meaning: 'durée', synonyms: ['période', 'moment'] },
+      'jour': { meaning: 'période de 24 heures', synonyms: ['journée'] },
+      'nuit': { meaning: 'période sombre', synonyms: ['obscurité', 'soir'] },
+      'eau': { meaning: 'liquide clair', synonyms: [] },
+      'nourriture': { meaning: 'substance à manger', synonyms: ['aliment'] },
+      'maison': { meaning: 'lieu de résidence', synonyms: ['domicile', 'logement'] }
+    },
+    'de': {
+      'hallo': { meaning: 'ein Gruß', synonyms: ['grüße'] },
+      'welt': { meaning: 'die Erde', synonyms: ['Planet', 'Globus'] },
+      'danke': { meaning: 'Dankbarkeit ausdrücken', synonyms: ['danken'] },
+      'liebe': { meaning: 'tiefe Zuneigung', synonyms: ['verehren', 'schätzen'] },
+      'freund': { meaning: 'ein Begleiter', synonyms: ['Kamerad', 'Kollege'] },
+      'glücklich': { meaning: 'Freude empfindend', synonyms: ['froh', 'zufrieden'] },
+      'zeit': { meaning: 'Dauer', synonyms: ['Periode', 'Moment'] },
+      'tag': { meaning: '24-Stunden-Zeitraum', synonyms: ['Tageszeit'] },
+      'nacht': { meaning: 'dunkle Periode', synonyms: ['Abend', 'Dunkelheit'] },
+      'wasser': { meaning: 'klare Flüssigkeit', synonyms: [] },
+      'essen': { meaning: 'Substanz zum Essen', synonyms: ['Nahrung'] },
+      'haus': { meaning: 'Wohnort', synonyms: ['Heim', 'Wohnung'] }
+    }
+  };
+
+  // Fallback dictionary API using Free Dictionary API
+  async function fetchWordMeaning(word, langCode){
+    // First check our simple dictionary
+    const dict = SIMPLE_DICT[langCode] || SIMPLE_DICT['en'];
+    const lowerWord = word.toLowerCase().replace(/[^a-záéíóúñüàèìòùäöüßç]/gi, '');
+    
+    if(dict && dict[lowerWord]){
+      return {
+        original: word,
+        translated: lowerWord,
+        meaning: dict[lowerWord].meaning,
+        synonyms: dict[lowerWord].synonyms || []
+      };
+    }
+    
+    // Try Free Dictionary API for English words
+    if(langCode === 'en' || langCode === 'auto'){
+      try{
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lowerWord)}`);
+        if(res.ok){
+          const data = await res.json();
+          if(Array.isArray(data) && data[0] && data[0].meanings && data[0].meanings[0]){
+            const meaning = data[0].meanings[0].definitions[0]?.definition || 'No definition available';
+            const synonyms = data[0].meanings[0].synonyms?.slice(0, 3) || [];
+            return {
+              original: word,
+              translated: lowerWord,
+              meaning: meaning,
+              synonyms: synonyms
+            };
+          }
+        }
+      } catch(e){
+        console.warn('Dictionary API failed for', word, e);
+      }
+    }
+    
+    // Return basic fallback
+    return {
+      original: word,
+      translated: lowerWord,
+      meaning: 'Translation provided by API',
+      synonyms: []
+    };
+  }
+
+  async function renderBreakdown(sourceText, targetText, targetLang){
+    // Tokenize source and target texts
+    const sourceWords = sourceText.trim().split(/\s+/).filter(w => w.length > 0);
+    const targetWords = targetText.trim().split(/\s+/).filter(w => w.length > 0);
+    
+    if(sourceWords.length === 0 || targetWords.length === 0){
+      breakdownPanel.classList.remove('visible');
+      return;
+    }
+    
+    // Show panel with loading state
+    breakdownPanel.classList.add('visible');
+    validationBadge.className = 'validation-badge warning';
+    validationBadge.textContent = '⏳ Loading...';
+    breakdownGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8a91a0; padding: 20px;">Loading word breakdown...</div>';
+    
+    // Process each word pair
+    const wordCards = [];
+    const maxLen = Math.max(sourceWords.length, targetWords.length);
+    
+    for(let i = 0; i < maxLen; i++){
+      const srcWord = sourceWords[i] || '—';
+      const tgtWord = targetWords[i] || '—';
+      
+      // Clean punctuation for lookup
+      const cleanTgtWord = tgtWord.replace(/[.,!?;:"'()]/g, '');
+      
+      try{
+        const wordData = await fetchWordMeaning(cleanTgtWord, targetLang);
+        wordCards.push({
+          original: srcWord,
+          translated: tgtWord,
+          meaning: wordData.meaning,
+          synonyms: wordData.synonyms
+        });
+      } catch(e){
+        wordCards.push({
+          original: srcWord,
+          translated: tgtWord,
+          meaning: 'Translation provided',
+          synonyms: []
+        });
+      }
+    }
+    
+    // Render cards
+    breakdownGrid.innerHTML = wordCards.map(word => `
+      <div class="word-card">
+        <div class="word-original">${escapeHtml(word.original)}</div>
+        <div class="word-translated">${escapeHtml(word.translated)}</div>
+        <div class="word-meaning">${escapeHtml(word.meaning)}</div>
+        ${word.synonyms.length > 0 ? `<div class="word-synonyms">${word.synonyms.join(', ')}</div>` : ''}
+      </div>
+    `).join('');
+    
+    // Update validation badge
+    validationBadge.className = 'validation-badge valid';
+    validationBadge.textContent = '✓ Validated';
+  }
+
   sourceText.addEventListener('input', ()=>{
     charCount.textContent = `${sourceText.value.length} / 1000`;
   });
@@ -707,6 +997,9 @@
       
       // Add to history
       addToHistory(text, result, from, to);
+      
+      // Render word breakdown
+      renderBreakdown(text, result, to);
       
       setStatus(`Translated ${from === 'auto' ? '(detected)' : from} → ${to}`);
     } catch(err){

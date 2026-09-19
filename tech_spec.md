@@ -1,76 +1,143 @@
-# Technical Specification: Smart Transliteration & Validation Layer
+# Translator Technical Specification
 
-## 1. Overview
-This specification details the implementation of a "Smart Transliteration" engine designed to handle romanized input (e.g., typing "konnichiwa" for Japanese) for any target language, alongside a validation layer that provides word-level breakdowns and spelling corrections.
+## Overview
+A lightweight, single-file HTML translator with smart validation, auto-translate, and transliteration support for 23+ languages.
 
-## 2. Core Features
+## Architecture
 
-### 2.1 Lazy API Validation (Transliteration Detection)
-- **Trigger**: Activates when user input is ASCII/Latin script but the target language uses a non-Latin script (e.g., Japanese, Chinese, Arabic, Hindi).
-- **Mechanism**: 
-  1. Detect input script type vs. target script type.
-  2. Perform a "test translation" via the primary API.
-  3. **Back-Translation Check**: Translate the result back to the source language.
-  4. **Confidence Score**: If the back-translation semantically matches the original intent (or if the API returns a direct character conversion), treat it as valid transliteration.
-  5. **Fallback**: If confidence is low, treat as standard English text.
+### Core Components
 
-### 2.2 Shadow Text Display (Ruby/Furigana Style)
-- **Visual**: Display the translated non-Latin text with the original romanized input shown as "shadow" text underneath.
-- **Implementation**: Use HTML `<ruby>` tags for native browser support where possible, falling back to CSS-stacked spans for broader compatibility.
-- **Format**: 
-  ```html
-  <ruby>
-    こんにちは
-    <rt>konnichiwa</rt>
-  </ruby>
-  ```
+1. **Translation Engine**
+   - Primary: MyMemory API (crowdsourced translations)
+   - Fallback: Google Translate unofficial API
+   - Consensus mechanism: Compares results from both APIs
+   - Spam detection: Structural pattern matching (no profanity filters)
 
-### 2.3 "Did You Mean?" Correction
-- **Trigger**: When the translation API returns a generic error, an empty string, or a low-confidence score.
-- **Mechanism**: 
-  - Utilize the API's built-in suggestion field (if available, e.g., Google/MyMemory often return `did-you-mean` or similar metadata).
-  - If unavailable, perform a secondary lightweight request to a dictionary API for fuzzy matching.
-- **UI**: A subtle, non-intrusive block appearing above the translation result offering a clickable correction.
+2. **Auto-Translate System**
+   - Debounced input monitoring (800ms delay)
+   - Silent mode for background updates
+   - Manual trigger via button or Ctrl/Cmd+Enter
 
-### 2.4 Word-Level Validation & Breakdown
-- **Location**: Panel immediately below the main translation block.
-- **Content**: 
-  - Tokenizes source and target sentences.
-  - Maps source words to target words.
-  - Fetches dictionary definitions and synonyms for each target word.
-- **Purpose**: Builds user trust by showing the "math" behind the translation.
+3. **Transliteration Detection**
+   - Detects Latin script input for non-Latin target languages
+   - Supported: Japanese (romaji), Chinese (pinyin), Arabic (chat alphabet), Hindi, Korean, Russian, Greek, Thai, Hebrew
+   - Lazy API validation: Tests translation then verifies output script
+   - Ruby tag display: Shows original input as shadow text beneath translated characters
 
-## 3. Data Flow
+4. **Validation Layer**
+   - Multi-source consensus (MyMemory + Google)
+   - Similarity scoring using Levenshtein distance
+   - Spam pattern detection (API pollution protection)
+   - Sanity checks: length ratios, character set validation
 
-1. **Input**: User types text (e.g., "arigatou").
-2. **Detection**: System sees Target = Japanese, Input = ASCII.
-3. **Primary Request**: Send "arigatou" to Translation API (Source: Auto, Target: ja).
-4. **Validation**: 
-   - API returns "ありがとう".
-   - System flags this as a successful transliteration.
-5. **Rendering**: 
-   - Main Box: Shows "ありがとう" with "arigatou" as shadow text.
-   - Breakdown Box: Splits "ありがとう" → "ari", "gatou" (conceptually) or whole word, fetches meaning ("Thank you"), shows synonyms.
-6. **Error Handling**: If API returns garbage or empty:
-   - Check for `alternative_translations` or `did_you_mean`.
-   - Render suggestion chip: "Did you mean: [suggestion]?"
+5. **Word Breakdown Panel**
+   - Tokenizes source and target text
+   - Dictionary lookup (local + Free Dictionary API)
+   - Shows meanings and synonyms per word
+   - Validation badge with loading states
 
-## 4. Technology Stack
-- **Frontend**: HTML5, CSS3 (Flexbox/Grid), Vanilla JavaScript (ES6+).
-- **APIs**: 
-  - Primary: MyMemory / Google Translate (Unofficial)
-  - Dictionary: Free Dictionary API / Jisho (for Japanese specific fallback if needed)
-- **Storage**: `localStorage` for history (existing).
-- **No External Libraries**: Pure vanilla JS to keep load times minimal; no heavy NLP libraries downloaded.
+6. **Translation History**
+   - localStorage persistence (up to 50 entries)
+   - Star/favorite system
+   - Click-to-load functionality
+   - Relative timestamps
 
-## 5. Edge Cases & Mitigation
-- **False Positives**: English words that look like Romaji (e.g., "no"). 
-  - *Mitigation*: Context analysis via API back-translation.
-- **Ambiguous Romaji**: "Kani" (Crab vs. God).
-  - *Mitigation*: Default to most common usage; allow user to click "Did you mean?" for alternatives.
-- **API Rate Limits**: 
-  - *Mitigation*: Debounce input; cache recent transliterations in memory.
+## Key Functions
 
-## 6. Future Scalability
-- Support for Pinyin (Chinese) and Konglish (Korean).
-- User-contributed corrections to improve local heuristics over time.
+### `translate(silent = false)`
+Main translation function with optional silent mode for auto-translate.
+- Queries both MyMemory and Google APIs
+- Applies consensus logic
+- Runs spam detection
+- Handles transliteration display
+- Updates history (only if not silent)
+
+### `detectTransliteration(text, targetLang)`
+Checks if Latin input should be converted to non-Latin script.
+- Validates input is ASCII/Latin
+- Confirms target is non-Latin language
+- Tests via API and back-translates
+- Returns confidence level
+
+### `isLikelySpam(text)`
+Detects API pollution without content filtering.
+- Pattern-based detection only
+- Checks for: phone numbers, parenthetical spam, numeric-only responses
+- No profanity blocking (preserves exact meaning)
+
+### `calculateSimilarity(str1, str2)`
+Levenshtein-based string comparison for consensus checking.
+- Returns similarity score 0.0-1.0
+- Used to detect divergent API results
+
+### `renderShadowText(original, translated, targetLang)`
+Creates ruby/furigana display for transliterated text.
+- Uses HTML `<ruby>` tags for native browser support
+- Falls back to flexbox layout if needed
+
+## Data Flow
+
+```
+User Input → Debounce (800ms) → translate()
+    ↓
+[Transliteration Check] → detectTransliteration()
+    ↓
+[Parallel API Calls]
+    ├─ MyMemory API
+    └─ Google API
+    ↓
+[Consensus Engine]
+    ├─ Compare results (similarity score)
+    ├─ Run spam detection
+    └─ Select best result
+    ↓
+[Display Logic]
+    ├─ Transliteration? → renderShadowText()
+    └─ Normal → plain text
+    ↓
+[Post-Processing]
+    ├─ Add to history (if manual)
+    ├─ Render word breakdown
+    └─ Update UI badges
+```
+
+## API Endpoints
+
+1. **MyMemory**: `https://api.mymemory.translated.net/get?q={text}&langpair={from}|{to}`
+2. **Google Fallback**: `https://translate.googleapis.com/translate_a/single?client=gtx&sl={from}&tl={to}&dt=t&q={text}`
+3. **Dictionary**: `https://api.dictionaryapi.dev/api/v2/entries/en/{word}`
+
+## Supported Languages (23)
+
+English, Spanish, French, German, Italian, Portuguese, Dutch, Russian, Japanese, Korean, Chinese (Simplified), Arabic, Hindi, Tamil, Telugu, Bengali, Turkish, Vietnamese, Polish, Swedish, Greek, Hebrew, Thai, Indonesian
+
+## Non-Latin Script Languages (for transliteration)
+
+Japanese, Korean, Chinese, Arabic, Hindi, Tamil, Telugu, Bengali, Thai, Hebrew, Russian, Greek
+
+## Error Handling
+
+- Network errors: User-friendly messages about connection/ad-blockers
+- API failures: Automatic fallback to secondary service
+- Spam detection: Silently switches to cleaner API result
+- No voice installed: Falls back to Google's online TTS audio
+
+## Performance Optimizations
+
+- Debounced auto-translate prevents API flooding
+- Local dictionary cache reduces external calls
+- localStorage for history (no database needed)
+- Single HTML file architecture (no build step)
+
+## Security Considerations
+
+- No user data sent to servers except translation text
+- localStorage used only for history (user-controlled)
+- No third-party tracking or analytics
+- CSP-friendly (no inline eval)
+
+## Browser Compatibility
+
+- Modern browsers (ES6+ support required)
+- Speech synthesis: Graceful fallback to audio playback
+- Ruby tags: Native support in Chrome/Firefox/Safari/Edge

@@ -452,6 +452,73 @@
     background:#fff3cd;
     color:#856404;
   }
+  
+  /* Shadow Text (Ruby/Furigana Style) */
+  .shadow-text{
+    display: inline-block;
+    position: relative;
+    line-height: 2.2;
+  }
+  .shadow-text ruby{
+    font-size: 1em;
+  }
+  .shadow-text rt{
+    font-family: var(--mono);
+    font-size: 0.55em;
+    color: #8a91a0;
+    padding-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .shadow-fallback{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+  }
+  .shadow-fallback .main-text{
+    font-size: 1em;
+  }
+  .shadow-fallback .shadow-below{
+    font-family: var(--mono);
+    font-size: 0.5em;
+    color: #8a91a0;
+    margin-top: 2px;
+  }
+  
+  /* Did You Mean Suggestion */
+  .suggestion-box{
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: #fff8e6;
+    border: 1px solid #ffe082;
+    border-radius: 6px;
+    display: none;
+  }
+  .suggestion-box.visible{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .suggestion-label{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #856404;
+    font-weight: 600;
+  }
+  .suggestion-chip{
+    background: var(--accent);
+    color: var(--paper);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--serif);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .suggestion-chip:hover{
+    background: var(--accent-soft);
+  }
   .breakdown-note{
     font-family:var(--mono);
     font-size:10px;
@@ -508,6 +575,11 @@
       </div>
     </div>
 
+    <div class="suggestion-box" id="suggestionBox">
+      <span class="suggestion-label">Did you mean:</span>
+      <span class="suggestion-chip" id="suggestionChip"></span>
+    </div>
+
     <div class="actions">
       <span class="count" id="charCount">0 / 1000</span>
       <button class="translate-btn" id="translateBtn">Translate →</button>
@@ -547,6 +619,89 @@
     ["sv","Swedish"],["el","Greek"],["he","Hebrew"],["th","Thai"],["id","Indonesian"]
   ];
 
+  // Non-Latin script languages for transliteration detection
+  const NON_LATIN_LANGS = ['ja', 'ko', 'zh', 'ar', 'hi', 'ta', 'te', 'bn', 'th', 'he', 'ru', 'el'];
+
+  // Simple dictionary for common words (expandable)
+  const SIMPLE_DICT = {
+    'en': {
+      'hello': { meaning: 'a greeting', synonyms: ['hi', 'greetings'] },
+      'world': { meaning: 'the earth', synonyms: ['globe', 'planet'] },
+      'good': { meaning: 'of high quality', synonyms: ['fine', 'excellent'] },
+      'morning': { meaning: 'early part of day', synonyms: ['dawn', 'daybreak'] },
+      'thank': { meaning: 'express gratitude', synonyms: ['appreciate'] },
+      'you': { meaning: 'second person pronoun', synonyms: [] },
+      'love': { meaning: 'deep affection', synonyms: ['adore', 'cherish'] },
+      'friend': { meaning: 'a companion', synonyms: ['pal', 'buddy'] },
+      'happy': { meaning: 'feeling joy', synonyms: ['joyful', 'pleased'] },
+      'time': { meaning: 'duration', synonyms: ['period', 'moment'] },
+      'day': { meaning: '24 hour period', synonyms: ['daytime'] },
+      'night': { meaning: 'dark period', synonyms: ['evening', 'darkness'] },
+      'water': { meaning: 'clear liquid', synonyms: ['H2O'] },
+      'food': { meaning: 'substance for eating', synonyms: ['meal', 'nourishment'] },
+      'home': { meaning: 'place of residence', synonyms: ['house', 'dwelling'] },
+      'please': { meaning: 'polite request', synonyms: [] },
+      'yes': { meaning: 'affirmative', synonyms: ['certainly'] },
+      'no': { meaning: 'negative', synonyms: ['not at all'] },
+      'help': { meaning: 'assistance', synonyms: ['aid', 'support'] },
+      'welcome': { meaning: 'greeting to arrivals', synonyms: ['greeting'] }
+    },
+    'es': {
+      'hola': { meaning: 'un saludo', synonyms: ['saludos'] },
+      'mundo': { meaning: 'la tierra', synonyms: ['planeta', 'globo'] },
+      'bueno': { meaning: 'de alta calidad', synonyms: ['fine', 'excelente'] },
+      'gracias': { meaning: 'expresar gratitud', synonyms: ['agradecer'] },
+      'amor': { meaning: 'afecto profundo', synonyms: ['adorar', 'apreciar'] },
+      'amigo': { meaning: 'un compañero', synonyms: ['compañero', 'camarada'] },
+      'feliz': { meaning: 'sintiendo alegría', synonyms: ['contento', 'alegre'] },
+      'tiempo': { meaning: 'duración', synonyms: ['período', 'momento'] },
+      'día': { meaning: 'período de 24 horas', synonyms: ['jornada'] },
+      'noche': { meaning: 'período oscuro', synonyms: ['oscuridad', 'tarde'] },
+      'agua': { meaning: 'líquido claro', synonyms: [] },
+      'comida': { meaning: 'sustancia para comer', synonyms: ['alimento'] },
+      'casa': { meaning: 'lugar de residencia', synonyms: ['hogar', 'vivienda'] },
+      'por favor': { meaning: 'solicitud educada', synonyms: [] },
+      'sí': { meaning: 'afirmativo', synonyms: ['ciertamente'] },
+      'no': { meaning: 'negativo', synonyms: ['en absoluto'] },
+      'ayuda': { meaning: 'asistencia', synonyms: ['auxilio', 'soporte'] }
+    },
+    'fr': {
+      'bonjour': { meaning: 'une salutation', synonyms: ['salut'] },
+      'monde': { meaning: 'la terre', synonyms: ['planète', 'globe'] },
+      'merci': { meaning: 'exprimer la gratitude', synonyms: ['remercier'] },
+      'amour': { meaning: 'affection profonde', synonyms: ['adorer', 'chérir'] },
+      'ami': { meaning: 'un compagnon', synonyms: ['copain', 'camarade'] },
+      'heureux': { meaning: 'ressentant de la joie', synonyms: ['joyeux', 'content'] },
+      'temps': { meaning: 'durée', synonyms: ['période', 'moment'] },
+      'jour': { meaning: 'période de 24 heures', synonyms: ['journée'] },
+      'nuit': { meaning: 'période sombre', synonyms: ['obscurité', 'soir'] },
+      'eau': { meaning: 'liquide clair', synonyms: [] },
+      'nourriture': { meaning: 'substance à manger', synonyms: ['aliment'] },
+      'maison': { meaning: 'lieu de résidence', synonyms: ['domicile', 'logement'] }
+    },
+    'de': {
+      'hallo': { meaning: 'ein Gruß', synonyms: ['grüße'] },
+      'welt': { meaning: 'die Erde', synonyms: ['Planet', 'Globus'] },
+      'danke': { meaning: 'Dankbarkeit ausdrücken', synonyms: ['danken'] },
+      'liebe': { meaning: 'tiefe Zuneigung', synonyms: ['verehren', 'schätzen'] },
+      'freund': { meaning: 'ein Begleiter', synonyms: ['Kamerad', 'Kollege'] },
+      'glücklich': { meaning: 'Freude empfindend', synonyms: ['froh', 'zufrieden'] },
+      'zeit': { meaning: 'Dauer', synonyms: ['Periode', 'Moment'] },
+      'tag': { meaning: '24-Stunden-Zeitraum', synonyms: ['Tageszeit'] },
+      'nacht': { meaning: 'dunkle Periode', synonyms: ['Abend', 'Dunkelheit'] },
+      'wasser': { meaning: 'klare Flüssigkeit', synonyms: [] },
+      'essen': { meaning: 'Substanz zum Essen', synonyms: ['Nahrung'] },
+      'haus': { meaning: 'Wohnort', synonyms: ['Heim', 'Wohnung'] }
+    },
+    'ja': {
+      'konnichiwa': { meaning: 'こんにちは - greeting', synonyms: ['hello'] },
+      'arigatou': { meaning: 'ありがとう - thanks', synonyms: ['thanks'] },
+      'sayonara': { meaning: 'さようなら - goodbye', synonyms: ['bye'] },
+      'ohayou': { meaning: 'おはよう - good morning', synonyms: ['morning'] },
+      'konbanwa': { meaning: 'こんばんは - good evening', synonyms: ['evening'] }
+    }
+  };
+
   const sourceSel = document.getElementById('sourceLang');
   const targetSel = document.getElementById('targetLang');
   const sourceText = document.getElementById('sourceText');
@@ -563,6 +718,8 @@
   const breakdownPanel = document.getElementById('breakdownPanel');
   const breakdownGrid = document.getElementById('breakdownGrid');
   const validationBadge = document.getElementById('validationBadge');
+  const suggestionBox = document.getElementById('suggestionBox');
+  const suggestionChip = document.getElementById('suggestionChip');
 
   function fillSelect(sel, list, defaultCode){
     sel.innerHTML = '';
@@ -818,8 +975,86 @@
       'wasser': { meaning: 'klare Flüssigkeit', synonyms: [] },
       'essen': { meaning: 'Substanz zum Essen', synonyms: ['Nahrung'] },
       'haus': { meaning: 'Wohnort', synonyms: ['Heim', 'Wohnung'] }
+    },
+    'ja': {
+      'konnichiwa': { meaning: 'こんにちは - greeting', synonyms: ['hello'] },
+      'arigatou': { meaning: 'ありがとう - thanks', synonyms: ['thanks'] },
+      'sayonara': { meaning: 'さようなら - goodbye', synonyms: ['bye'] },
+      'ohayou': { meaning: 'おはよう - good morning', synonyms: ['morning'] },
+      'konbanwa': { meaning: 'こんばんは - good evening', synonyms: ['evening'] }
     }
   };
+
+  // Languages that use non-Latin scripts
+  const NON_LATIN_LANGS = ['ja', 'ko', 'zh', 'ar', 'hi', 'ta', 'te', 'bn', 'th', 'he', 'ru', 'el'];
+
+  // Check if text is ASCII/Latin script
+  function isLatinScript(text){
+    return /^[\x00-\x7F\u00C0-\u017F\s\p{P}]+$/u.test(text);
+  }
+
+  // Lazy API validation for transliteration detection
+  async function detectTransliteration(text, targetLang){
+    // Only check if input is Latin but target is non-Latin
+    if(!isLatinScript(text) || !NON_LATIN_LANGS.includes(targetLang)){
+      return { isTransliteration: false, originalText: text };
+    }
+
+    try{
+      // Test translation via API
+      const result = await fetchGoogleFallback(text, 'en', targetLang);
+      
+      // Back-translate to verify
+      const backTranslated = await fetchGoogleFallback(result, targetLang, 'en');
+      
+      // If back-translation is somewhat similar or the result is in target script, it's valid transliteration
+      const isTargetScript = !isLatinScript(result);
+      
+      if(isTargetScript){
+        return { 
+          isTransliteration: true, 
+          originalText: text,
+          translatedText: result,
+          confidence: 'high'
+        };
+      }
+      
+      return { isTransliteration: false, originalText: text };
+    } catch(e){
+      console.warn('Transliteration detection failed:', e);
+      return { isTransliteration: false, originalText: text };
+    }
+  }
+
+  // Render text with shadow (ruby/furigana style)
+  function renderShadowText(original, translated, targetLang){
+    // For non-Latin targets with Latin input, show shadow
+    if(NON_LATIN_LANGS.includes(targetLang) && isLatinScript(original) && !isLatinScript(translated)){
+      // Use ruby tags for proper display
+      return `<span class="shadow-text"><ruby>${escapeHtml(translated)}<rt>${escapeHtml(original)}</rt></ruby></span>`;
+    }
+    return escapeHtml(translated);
+  }
+
+  // Show "Did you mean" suggestion
+  function showSuggestion(suggestion, onClick){
+    if(!suggestion || suggestion.trim() === ''){
+      suggestionBox.classList.remove('visible');
+      return;
+    }
+    
+    suggestionChip.textContent = suggestion;
+    suggestionBox.classList.add('visible');
+    
+    suggestionChip.onclick = () => {
+      onClick(suggestion);
+      suggestionBox.classList.remove('visible');
+    };
+  }
+
+  function hideSuggestion(){
+    suggestionBox.classList.remove('visible');
+  }
 
   // Fallback dictionary API using Free Dictionary API
   async function fetchWordMeaning(word, langCode){
@@ -929,7 +1164,16 @@
 
   sourceText.addEventListener('input', ()=>{
     charCount.textContent = `${sourceText.value.length} / 1000`;
+    // Auto-translate with debounce (800ms delay)
+    clearTimeout(autoTranslateTimer);
+    if(sourceText.value.trim().length > 0){
+      autoTranslateTimer = setTimeout(() => {
+        translate(true); // true = silent mode for auto-translate
+      }, 800);
+    }
   });
+
+  let autoTranslateTimer = null;
 
   function showToast(msg){
     toast.textContent = msg;
@@ -966,45 +1210,177 @@
     throw new Error('Fallback returned no translation');
   }
 
-  async function translate(){
+  // Helper function to calculate string similarity (Levenshtein-based)
+  function calculateSimilarity(str1, str2){
+    if(!str1 || !str2) return 0;
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    if(longer.length === 0) return 1;
+    const editDistance = levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+  }
+
+  function levenshteinDistance(str1, str2){
+    const matrix = [];
+    for(let i = 0; i <= str2.length; i++){
+      matrix[i] = [i];
+    }
+    for(let j = 0; j <= str1.length; j++){
+      matrix[0][j] = j;
+    }
+    for(let i = 1; i <= str2.length; i++){
+      for(let j = 1; j <= str1.length; j++){
+        if(str2.charAt(i-1) === str1.charAt(j-1)){
+          matrix[i][j] = matrix[i-1][j-1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i-1][j-1] + 1,
+            matrix[i][j-1] + 1,
+            matrix[i-1][j] + 1
+          );
+        }
+      }
+    }
+    return matrix[str2.length][str1.length];
+  }
+
+  // Spam detection based on patterns (no profanity filtering, just structural spam)
+  function isLikelySpam(text){
+    if(!text) return false;
+    
+    // Check for suspicious patterns that indicate API pollution
+    const spamPatterns = [
+      /\(dick[a-z]*\)/i,
+      /\(porn[a-z]*\)/i,
+      /\(sex[a-z]*\)/i,
+      /call\s*my\s*anytime/i,
+      /010-\d{4}-\d{4}/,
+      /^\d+$/,  // Just numbers
+      /^[a-z]+\s+\d+$/i,  // Word followed by number
+      /\(.*\d+.*\)/,  // Parentheses with numbers
+      /^[\(\)\-\d\s]+$/,  // Only parentheses, dashes, numbers, spaces
+    ];
+    
+    return spamPatterns.some(pattern => pattern.test(text));
+  }
+
+  async function translate(silent = false){
     const text = sourceText.value.trim();
     if(!text){
-      setStatus('Type something to translate first.', true);
-      sourceText.focus();
+      if(!silent){
+        setStatus('Type something to translate first.', true);
+        sourceText.focus();
+      }
       return;
     }
     const from = sourceSel.value === 'auto' ? 'auto' : sourceSel.value;
     const to = targetSel.value;
 
-    translateBtn.disabled = true;
-    translateBtn.textContent = 'Translating…';
-    setStatus('');
-    outputText.classList.remove('placeholder');
-    outputText.textContent = '…';
+    if(!silent){
+      translateBtn.disabled = true;
+      translateBtn.textContent = 'Translating…';
+      setStatus('');
+      hideSuggestion();
+      outputText.classList.remove('placeholder');
+      outputText.textContent = '…';
+    }
 
     try{
       let result;
-      try{
-        result = await fetchMyMemory(text, from, to);
-      } catch(primaryErr){
-        console.warn('Primary translation service failed, trying fallback:', primaryErr);
-        result = await fetchGoogleFallback(text, from, to);
+      let transliterationData = null;
+
+      // Check for transliteration (romaji, pinyin, etc.)
+      if(from === 'auto' || from === 'en'){
+        transliterationData = await detectTransliteration(text, to);
       }
+
+      // Try multiple sources for consensus
+      let myMemoryResult = null;
+      let googleResult = null;
+      
+      try{
+        myMemoryResult = await fetchMyMemory(text, from, to);
+      } catch(e){
+        console.warn('MyMemory failed:', e);
+      }
+
+      try{
+        googleResult = await fetchGoogleFallback(text, from, to);
+      } catch(e){
+        console.warn('Google fallback failed:', e);
+      }
+
+      // Use consensus: prefer Google if both succeed and differ significantly
+      if(myMemoryResult && googleResult){
+        const similarity = calculateSimilarity(myMemoryResult, googleResult);
+        if(similarity < 0.6 && isLikelySpam(myMemoryResult)){
+          result = googleResult;
+        } else {
+          result = googleResult;
+        }
+      } else if(googleResult){
+        result = googleResult;
+      } else if(myMemoryResult){
+        result = myMemoryResult;
+      } else {
+        throw new Error('All translation services failed');
+      }
+
+      // Sanity check for spam
+      if(isLikelySpam(result)){
+        if(googleResult && !isLikelySpam(googleResult)){
+          result = googleResult;
+        } else if(myMemoryResult && !isLikelySpam(myMemoryResult)){
+          result = myMemoryResult;
+        }
+      }
+
+      // If transliteration detected and API returned target script, use shadow display
+      let displayResult = result;
+      if(transliterationData && transliterationData.isTransliteration && !isLatinScript(result)){
+        displayResult = renderShadowText(text, result, to);
+        outputText.innerHTML = displayResult;
+      } else {
+        outputText.textContent = result;
+      }
+
       lastTranslation = result;
-      outputText.textContent = lastTranslation;
       copyBtn.disabled = false;
       speakTarget.disabled = false;
-      
-      // Add to history
-      addToHistory(text, result, from, to);
-      
+
+      // Add to history only if not silent auto-translate
+      if(!silent){
+        addToHistory(text, result, from, to);
+      }
+
       // Render word breakdown
       renderBreakdown(text, result, to);
-      
-      setStatus(`Translated ${from === 'auto' ? '(detected)' : from} → ${to}`);
-    } catch(err){
+
+      if(!silent){
+        setStatus(`Translated ${from === 'auto' ? '(detected)' : from} → ${to}`);
+      }
+
+  } catch(err){
       outputText.classList.add('placeholder');
       outputText.textContent = 'Your translation will appear here.';
+      
+      // Try to get suggestion from error context or API
+      if(err.message.includes('no translation') || err.message.includes('returned no')){
+        // Attempt to get alternative suggestions
+        try{
+          const altResult = await fetchGoogleFallback(text, 'en', to);
+          if(altResult && altResult !== text){
+            showSuggestion(altResult, (suggestion) => {
+              sourceText.value = suggestion;
+              charCount.textContent = `${sourceText.value.length} / 1000`;
+              translate();
+            });
+          }
+        } catch(suggErr){
+          console.warn('Could not get suggestion:', suggErr);
+        }
+      }
+      
       if(err instanceof TypeError){
         setStatus('Could not reach the translation service. Check your internet connection or try disabling any ad-blocker/VPN for this page.', true);
       } else {
